@@ -8,8 +8,11 @@ import (
 	"net/http"
 	"net/url"
 
+	"golang.org/x/net/context"
+
+	"goji.io"
+
 	"github.com/gorilla/securecookie"
-	"github.com/zenazn/goji/web"
 )
 
 // CSRF token length in bytes.
@@ -52,8 +55,7 @@ var (
 )
 
 type csrf struct {
-	c    *web.C
-	h    http.Handler
+	h    goji.Handler
 	sc   *securecookie.SecureCookie
 	st   store
 	opts options
@@ -70,7 +72,7 @@ type options struct {
 	Secure        bool
 	RequestHeader string
 	FieldName     string
-	ErrorHandler  web.Handler
+	ErrorHandler  goji.Handler
 	CookieName    string
 }
 
@@ -89,25 +91,30 @@ type options struct {
 //	package main
 //
 //	import (
-//	    "github.com/goji/csrf"
-//	    "github.com/zenazn/goji"
+//	    "html/template"
+//	    "net/http"
+//
+//	    "goji.io"
+//	    "github.com/goji/ctx-csrf"
+//	    "github.com/zenazn/goji/graceful"
 //	)
 //
 //	func main() {
+//	    m := goji.NewMux()
 //	    // Add the middleware to your router.
-//	    goji.Use(csrf.Protect([]byte("32-byte-long-auth-key")))
-//	    goji.Get("/signup", GetSignupForm)
+//	    m.UseC(csrf.Protect([]byte("32-byte-long-auth-key")))
+//	    m.HandleFuncC(pat.Get("/signup"), ShowSignupForm)
 //	    // POST requests without a valid token will return a HTTP 403 Forbidden.
-//	    goji.Post("/signup/post", PostSignupForm)
+//	    m.HandleFuncC(pat.Post("/signup/post"), SubmitSignupForm)
 //
-//	    goji.Serve()
+//	    graceful.ListenAndServe(":8000", m)
 //	}
 //
-//	func GetSignupForm(c web.C, w http.ResponseWriter, r *http.Request) {
+//	func ShowSignupForm(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 //	    // signup_form.tmpl just needs a {{ .csrfField }} template tag for
 //	    // csrf.TemplateField to inject the CSRF token into. Easy!
 //	    t.ExecuteTemplate(w, "signup_form.tmpl", map[string]interface{
-//	        csrf.TemplateTag: csrf.TemplateField(c, r),
+//	        csrf.TemplateTag: csrf.TemplateField(ctx, r),
 //	    })
 //	    // We could also retrieve the token directly from csrf.Token(c, r) and
 //	    // set it in the request header - w.Header.Set("X-CSRF-Token", token)
@@ -115,13 +122,18 @@ type options struct {
 //	    // framework.
 //	}
 //
-func Protect(authKey []byte, opts ...Option) func(*web.C, http.Handler) http.Handler {
-	return func(c *web.C, h http.Handler) http.Handler {
+//	func SubmitSignupForm(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+//	    // We can trust that requests making it this far have satisfied
+//	    // our CSRF protection requirements.
+//	}
+//
+func Protect(authKey []byte, opts ...Option) func(goji.Handler) goji.Handler {
+	return func(h goji.Handler) goji.Handler {
 		cs := parseOptions(h, opts...)
 
 		// Set the defaults if no options have been specified
 		if cs.opts.ErrorHandler == nil {
-			cs.opts.ErrorHandler = web.HandlerFunc(unauthorizedHandler)
+			cs.opts.ErrorHandler = goji.HandlerFunc(unauthorizedHandler)
 		}
 
 		if cs.opts.MaxAge < 1 {
@@ -163,24 +175,16 @@ func Protect(authKey []byte, opts ...Option) func(*web.C, http.Handler) http.Han
 			}
 		}
 
-		// Initialize Goji's request context
-		cs.c = c
-
 		return *cs
 	}
 }
 
-// Implements http.Handler for the csrf type.
-func (cs csrf) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Create our request context if it does not already exist.
-	if cs.c.Env == nil {
-		cs.c.Env = make(map[interface{}]interface{})
-	}
-
+// Implements goji.Handler for the csrf type.
+func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	// Retrieve the token from the session.
 	// An error represents either a cookie that failed HMAC validation
 	// or that doesn't exist.
-	realToken, err := cs.st.Get(cs.c, r)
+	realToken, err := cs.st.Get(r)
 	if err != nil || len(realToken) != tokenLength {
 		// If there was an error retrieving the token, the token doesn't exist
 		// yet, or it's the wrong length, generate a new token.
@@ -188,24 +192,24 @@ func (cs csrf) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// as it will no longer match the request token.
 		realToken, err = generateRandomBytes(tokenLength)
 		if err != nil {
-			envError(cs.c, err)
-			cs.opts.ErrorHandler.ServeHTTPC(*cs.c, w, r)
+			setEnvError(ctx, err)
+			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 			return
 		}
 
 		// Save the new (real) token in the session store.
 		err = cs.st.Save(realToken, w)
 		if err != nil {
-			envError(cs.c, err)
-			cs.opts.ErrorHandler.ServeHTTPC(*cs.c, w, r)
+			setEnvError(ctx, err)
+			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 			return
 		}
 	}
 
 	// Save the masked token to the request context
-	cs.c.Env[tokenKey] = mask(realToken, cs.c, r)
+	ctx = context.WithValue(ctx, tokenKey, mask(realToken, r))
 	// Save the field name to the request context
-	cs.c.Env[formKey] = cs.opts.FieldName
+	ctx = context.WithValue(ctx, formKey, cs.opts.FieldName)
 
 	// HTTP methods not defined as idempotent ("safe") under RFC7231 require
 	// inspection.
@@ -218,14 +222,14 @@ func (cs csrf) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// otherwise fails to parse.
 			referer, err := url.Parse(r.Referer())
 			if err != nil || referer.String() == "" {
-				envError(cs.c, ErrNoReferer)
-				cs.opts.ErrorHandler.ServeHTTPC(*cs.c, w, r)
+				setEnvError(ctx, ErrNoReferer)
+				cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 				return
 			}
 
 			if sameOrigin(r.URL, referer) == false {
-				envError(cs.c, ErrBadReferer)
-				cs.opts.ErrorHandler.ServeHTTPC(*cs.c, w, r)
+				setEnvError(ctx, ErrBadReferer)
+				cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 				return
 			}
 		}
@@ -233,8 +237,16 @@ func (cs csrf) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// If the token returned from the session store is nil for non-idempotent
 		// ("unsafe") methods, call the error handler.
 		if realToken == nil {
-			envError(cs.c, ErrNoToken)
-			cs.opts.ErrorHandler.ServeHTTPC(*cs.c, w, r)
+			setEnvError(ctx, ErrNoToken)
+			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
+			return
+		}
+
+		// If the token returned from the session store is nil for non-idempotent
+		// ("unsafe") methods, call the error handler.
+		if realToken == nil {
+			setEnvError(ctx, ErrNoToken)
+			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 			return
 		}
 
@@ -243,8 +255,8 @@ func (cs csrf) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Compare the request token against the real token
 		if !compareTokens(requestToken, realToken) {
-			envError(cs.c, ErrBadToken)
-			cs.opts.ErrorHandler.ServeHTTPC(*cs.c, w, r)
+			setEnvError(ctx, ErrBadToken)
+			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 			return
 		}
 
@@ -254,14 +266,14 @@ func (cs csrf) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Vary", "Cookie")
 
 	// Call the wrapped handler/router on success
-	cs.h.ServeHTTP(w, r)
+	cs.h.ServeHTTPC(ctx, w, r)
 }
 
 // unauthorizedhandler sets a HTTP 403 Forbidden status and writes the
 // CSRF failure reason to the response.
-func unauthorizedHandler(c web.C, w http.ResponseWriter, r *http.Request) {
+func unauthorizedHandler(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	http.Error(w, fmt.Sprintf("%s - %s",
-		http.StatusText(http.StatusForbidden), FailureReason(c, r)),
+		http.StatusText(http.StatusForbidden), FailureReason(ctx, r)),
 		http.StatusForbidden)
 	return
 }
