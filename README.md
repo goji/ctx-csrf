@@ -1,9 +1,9 @@
-# goji/csrf
-[![GoDoc](https://godoc.org/github.com/goji/csrf?status.svg)](https://godoc.org/github.com/goji/csrf) [![Build Status](https://travis-ci.org/goji/csrf.svg?branch=master)](https://travis-ci.org/goji/csrf)
+# goji/ctx-csrf
+[![GoDoc](https://godoc.org/github.com/goji/ctx-csrf?status.svg)](https://godoc.org/github.com/goji/ctx-csrf) [![Build Status](https://travis-ci.org/goji/ctx-csrf.svg?branch=master)](https://travis-ci.org/goji/ctx-csrf)
 
-goji/csrf is a HTTP middleware library that provides [cross-site request
+**ctx-csrf** is a HTTP middleware library that provides [cross-site request
 forgery](http://blog.codinghorror.com/preventing-csrf-and-xsrf-attacks/) (CSRF)
- protection. It includes:
+protection with support for Go's `net/context` package. It includes:
 
 * The `csrf.Protect` middleware/handler that can be used with `goji.Use` to 
   provide CSRF protection on routes attached to a router or a sub-router.
@@ -13,25 +13,31 @@ forgery](http://blog.codinghorror.com/preventing-csrf-and-xsrf-attacks/) (CSRF)
   templates to replace a `{{ .csrfField }}` template tag with a hidden input
   field. 
 
-This library is designed to work with not just the the [Goji](https://github.com/goji/goji)
-micro-framework, but any framework that accepts the `func(context.Context, w http.ResponseWriter, r *http.Request)` 
-signature. This makes it compatible with other parts of the Go ecosystem. The
+This library is designed to work with not just the the
+[Goji](https://github.com/goji/goji) micro-framework, but any framework that
+accepts the `func(context.Context, w http.ResponseWriter, r *http.Request)`
+signature.
+
+This makes it compatible with other parts of the Go ecosystem. The
 `context.Context` request context doesn't rely on a global map, and is therefore
 free from contention in a busy web service.
 
-The library also assumes HTTPS by default: sending cookies over vanilla HTTP 
-is risky and you're likely to get hurt. 
+The library also assumes HTTPS by default: sending cookies over vanilla HTTP is
+risky and you're likely to get hurt. 
+
+*Note*: If you're using Goji v1, the older
+[goji/csrf](https://github.com/goji/csrf) still exists.
 
 ## Examples
 
-goji/csrf is easy to use: add the middleware to your stack with the below:
+ctx-csrf is easy to use: add the middleware to your stack with the below:
 
 ```go
 goji.UseC(csrf.Protect([]byte("32-byte-long-auth-key")))
 ```
 
 ... and then collect the token with `csrf.Token(c, r)` before passing it to the
-template, JSON body or HTTP header (you pick!). goji/csrf inspects HTTP headers
+template, JSON body or HTTP header (you pick!). ctx-csrf inspects HTTP headers
 (first) and the form body (second) on subsequent POST/PUT/PATCH/DELETE/etc.
 requests for the token.
 
@@ -48,7 +54,7 @@ import (
     "net/http"
 
     "goji.io"
-    "github.com/goji/csrf"
+    "github.com/goji/ctx-csrf"
     "github.com/zenazn/goji/graceful"
 )
 
@@ -94,7 +100,7 @@ package main
 
 import (
     "goji.io"
-    "github.com/goji/csrf"
+    "github.com/goji/ctx-csrf"
     "github.com/zenazn/goji/graceful"
 )
 
@@ -136,7 +142,7 @@ func GetUser(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 
 What about providing your own error handler and changing the HTTP header the
 package inspects on requests? (i.e. an existing API you're porting to Go). Well, 
-goji/csrf provides options for changing these as you see fit:
+ctx-csrf provides options for changing these as you see fit:
 
 ```go
 func main() {

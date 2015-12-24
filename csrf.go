@@ -91,30 +91,40 @@ type options struct {
 //	package main
 //
 //	import (
-//	    "github.com/goji/csrf"
-//	    "github.com/zenazn/goji"
+//	    "html/template"
+//	    "net/http"
+//
+//	    "goji.io"
+//	    "github.com/goji/ctx-csrf"
+//	    "github.com/zenazn/goji/graceful"
 //	)
 //
 //	func main() {
+//	    m := goji.NewMux()
 //	    // Add the middleware to your router.
-//	    goji.Use(csrf.Protect([]byte("32-byte-long-auth-key")))
-//	    goji.Get("/signup", GetSignupForm)
+//	    m.UseC(csrf.Protect([]byte("32-byte-long-auth-key")))
+//	    m.HandleFuncC(pat.Get("/signup"), ShowSignupForm)
 //	    // POST requests without a valid token will return a HTTP 403 Forbidden.
-//	    goji.Post("/signup/post", PostSignupForm)
+//	    m.HandleFuncC(pat.Post("/signup/post"), SubmitSignupForm)
 //
-//	    goji.Serve()
+//	    graceful.ListenAndServe(":8000", m)
 //	}
 //
-//	func GetSignupForm(c web.C, w http.ResponseWriter, r *http.Request) {
+//	func ShowSignupForm(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 //	    // signup_form.tmpl just needs a {{ .csrfField }} template tag for
 //	    // csrf.TemplateField to inject the CSRF token into. Easy!
 //	    t.ExecuteTemplate(w, "signup_form.tmpl", map[string]interface{
-//	        csrf.TemplateTag: csrf.TemplateField(c, r),
+//	        csrf.TemplateTag: csrf.TemplateField(ctx, r),
 //	    })
 //	    // We could also retrieve the token directly from csrf.Token(c, r) and
 //	    // set it in the request header - w.Header.Set("X-CSRF-Token", token)
 //	    // This is useful if your sending JSON to clients or a front-end JavaScript
 //	    // framework.
+//	}
+//
+//	func SubmitSignupForm(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+//	    // We can trust that requests making it this far have satisfied
+//	    // our CSRF protection requirements.
 //	}
 //
 func Protect(authKey []byte, opts ...Option) func(goji.Handler) goji.Handler {
@@ -169,7 +179,7 @@ func Protect(authKey []byte, opts ...Option) func(goji.Handler) goji.Handler {
 	}
 }
 
-// Implements http.Handler for the csrf type.
+// Implements goji.Handler for the csrf type.
 func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	// Retrieve the token from the session.
 	// An error represents either a cookie that failed HMAC validation
