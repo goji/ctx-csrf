@@ -242,14 +242,6 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 			return
 		}
 
-		// If the token returned from the session store is nil for non-idempotent
-		// ("unsafe") methods, call the error handler.
-		if realToken == nil {
-			ctx = setEnvError(ctx, ErrNoToken)
-			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
-			return
-		}
-
 		// Retrieve the combined token (pad + masked) token and unmask it.
 		requestToken := unmask(cs.requestToken(r))
 
