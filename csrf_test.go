@@ -81,7 +81,7 @@ func TestMethods(t *testing.T) {
 
 		if rr.Code != http.StatusForbidden {
 			t.Fatalf("middleware failed to pass to the next handler: got %v want %v",
-				rr.Code, http.StatusOK)
+				rr.Code, http.StatusForbidden)
 		}
 
 		if rr.Header().Get("Set-Cookie") == "" {
@@ -130,6 +130,27 @@ func TestBadCookie(t *testing.T) {
 			rr.Code, http.StatusForbidden)
 	}
 
+}
+
+func TestErrorHandler(t *testing.T) {
+	m := goji.NewMux()
+	errorHandler := goji.HandlerFunc(func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+		if ctx.Value(errorKey) == nil {
+			t.Errorf("should have access to a goji error")
+		}
+		http.Error(w, "", http.StatusTeapot)
+	})
+	m.UseC(Protect(testKey, ErrorHandler(errorHandler)))
+
+	r, _ := http.NewRequest("POST", "/", nil)
+
+	rr := httptest.NewRecorder()
+	m.ServeHTTPC(context.Background(), rr, r)
+
+	if rr.Code != http.StatusTeapot {
+		t.Fatalf("custom error handler was not called: got %v want %v",
+			rr.Code, http.StatusTeapot)
+	}
 }
 
 // Responses should set a "Vary: Cookie" header to protect client/proxy caching.

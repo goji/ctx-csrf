@@ -192,7 +192,7 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 		// as it will no longer match the request token.
 		realToken, err = generateRandomBytes(tokenLength)
 		if err != nil {
-			setEnvError(ctx, err)
+			ctx = setEnvError(ctx, err)
 			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 			return
 		}
@@ -200,7 +200,7 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 		// Save the new (real) token in the session store.
 		err = cs.st.Save(realToken, w)
 		if err != nil {
-			setEnvError(ctx, err)
+			ctx = setEnvError(ctx, err)
 			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 			return
 		}
@@ -222,13 +222,13 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 			// otherwise fails to parse.
 			referer, err := url.Parse(r.Referer())
 			if err != nil || referer.String() == "" {
-				setEnvError(ctx, ErrNoReferer)
+				ctx = setEnvError(ctx, ErrNoReferer)
 				cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 				return
 			}
 
 			if sameOrigin(r.URL, referer) == false {
-				setEnvError(ctx, ErrBadReferer)
+				ctx = setEnvError(ctx, ErrBadReferer)
 				cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 				return
 			}
@@ -237,7 +237,7 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 		// If the token returned from the session store is nil for non-idempotent
 		// ("unsafe") methods, call the error handler.
 		if realToken == nil {
-			setEnvError(ctx, ErrNoToken)
+			ctx = setEnvError(ctx, ErrNoToken)
 			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 			return
 		}
@@ -245,7 +245,7 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 		// If the token returned from the session store is nil for non-idempotent
 		// ("unsafe") methods, call the error handler.
 		if realToken == nil {
-			setEnvError(ctx, ErrNoToken)
+			ctx = setEnvError(ctx, ErrNoToken)
 			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 			return
 		}
@@ -255,7 +255,7 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 
 		// Compare the request token against the real token
 		if !compareTokens(requestToken, realToken) {
-			setEnvError(ctx, ErrBadToken)
+			ctx = setEnvError(ctx, ErrBadToken)
 			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
 			return
 		}
