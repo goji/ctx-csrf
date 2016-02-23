@@ -180,7 +180,7 @@ func contains(vals []string, s string) bool {
 	return false
 }
 
-// setEnvError stores a CSRF error in the request context.
-func setEnvError(ctx context.Context, err error) {
-	ctx = context.WithValue(ctx, errorKey, err)
+// setEnvError returns a request context with the CSRF error
+func setEnvError(ctx context.Context, err error) context.Context {
+	return context.WithValue(ctx, errorKey, err)
 }
