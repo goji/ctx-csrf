@@ -14,9 +14,9 @@ protection with support for Go's `net/context` package. It includes:
   field. 
 
 This library is designed to work with not just the the
-[Goji](https://github.com/goji/goji) micro-framework, but any framework that
-accepts the `func(context.Context, w http.ResponseWriter, r *http.Request)`
-signature.
+[Goji](https://github.com/goji/goji) micro-framework, but any project that satisfies the
+[goji.Handler](https://godoc.org/goji.io#Handler) interface: `ServeHTTPC(context.Context,
+http.ResponseWriter, *http.Request)`.
 
 This makes it compatible with other parts of the Go ecosystem. The
 `context.Context` request context doesn't rely on a global map, and is therefore
