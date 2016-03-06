@@ -253,3 +253,42 @@ func TestTemplateField(t *testing.T) {
 			customTemplateField, expectedTemplateField)
 	}
 }
+
+func TestUnsafeSkipCSRFCheck(t *testing.T) {
+	m := goji.NewMux()
+	skipCheck := func(h goji.Handler) goji.Handler {
+		fn := func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+			ctx = UnsafeSkipCheck(ctx)
+			h.ServeHTTPC(ctx, w, r)
+		}
+
+		return goji.HandlerFunc(fn)
+	}
+
+	// Must be used prior to the CSRF handler being invoked.
+	m.UseC(skipCheck)
+
+	CSRF := Protect(testKey)
+	m.UseC(CSRF)
+
+	var teapot = 418
+
+	// Issue a POST request without a CSRF token in the request.
+	m.HandleFuncC(pat.Post("/"), func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+		// Set a non-200 header to make the test explicit.
+		w.WriteHeader(teapot)
+	})
+
+	r, err := http.NewRequest("POST", "/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	m.ServeHTTPC(context.Background(), rr, r)
+
+	if status := rr.Code; status != teapot {
+		t.Fatalf("middleware failed to skip this request: got %v want %v",
+			status, teapot)
+	}
+}

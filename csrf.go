@@ -20,11 +20,12 @@ const tokenLength = 32
 
 // Context/session keys & prefixes
 const (
-	tokenKey    string = "goji.csrf.Token"
-	formKey     string = "goji.csrf.Form"
-	errorKey    string = "goji.csrf.Error"
-	cookieName  string = "_goji_csrf"
-	errorPrefix string = "goji/csrf: "
+	tokenKey     string = "goji.csrf.Token"
+	formKey      string = "goji.csrf.Form"
+	errorKey     string = "goji.csrf.Error"
+	skipCheckKey string = "goji.csrf.Skip"
+	cookieName   string = "_goji_csrf"
+	errorPrefix  string = "goji/csrf: "
 )
 
 var (
@@ -181,6 +182,14 @@ func Protect(authKey []byte, opts ...Option) func(goji.Handler) goji.Handler {
 
 // Implements goji.Handler for the csrf type.
 func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	// Skip the check if directed to. This should always be a bool.
+	if skip, ok := ctx.Value(skipCheckKey).(bool); ok {
+		if skip {
+			cs.h.ServeHTTPC(ctx, w, r)
+			return
+		}
+	}
+
 	// Retrieve the token from the session.
 	// An error represents either a cookie that failed HMAC validation
 	// or that doesn't exist.
