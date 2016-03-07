@@ -41,6 +41,10 @@ func Path(p string) Option {
 }
 
 // Secure sets the 'Secure' flag on the cookie. Defaults to true (recommended).
+// Set this to 'false' in your development environment otherwise the cookie won't
+// be sent over an insecure channel. Setting this via the presence of a 'DEV'
+// environmental variable is a good way of making sure this won't make it to a
+// production environment.
 func Secure(s bool) Option {
 	return func(cs *csrf) error {
 		cs.opts.Secure = s
