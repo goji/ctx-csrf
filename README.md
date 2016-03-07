@@ -61,6 +61,8 @@ import (
 func main() {
     m := goji.NewMux()
     // Add the middleware to your router.
+    // PS: Don't forget to pass csrf.Secure(false) if you're developing locally
+    // over plain HTTP (just don't leave it on in production).
     m.UseC(csrf.Protect([]byte("32-byte-long-auth-key")))
     m.HandleFuncC(pat.Get("/signup"), ShowSignupForm)
     // POST requests without a valid token will return a HTTP 403 Forbidden.
