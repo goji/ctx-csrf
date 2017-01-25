@@ -35,11 +35,12 @@ var testTemplateField = `<input type="hidden" name="%s" value="%s">`
 // Test that our form helpers correctly inject a token into the response body.
 func TestFormToken(t *testing.T) {
 	m := goji.NewMux()
-	m.UseC(Protect(testKey))
+	m.Use(Protect(testKey))
 
 	// Make the token available outside of the handler for comparison.
 	var token string
-	m.HandleFuncC(pat.New("/"), func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	m.HandleFunc(pat.New("/"), func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
 		token = Token(ctx, r)
 		t := template.Must((template.New("base").Parse(testTemplate)))
 		t.Execute(w, map[string]interface{}{
@@ -72,11 +73,12 @@ func TestFormToken(t *testing.T) {
 // Test that we can extract a CSRF token from a multipart form.
 func TestMultipartFormToken(t *testing.T) {
 	m := goji.NewMux()
-	m.UseC(Protect(testKey))
+	m.Use(Protect(testKey))
 
 	// Make the token available outside of the handler for comparison.
 	var token string
-	m.HandleFuncC(pat.New("/"), func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	m.HandleFunc(pat.New("/"), func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
 		token = Token(ctx, r)
 		t := template.Must((template.New("base").Parse(testTemplate)))
 		t.Execute(w, map[string]interface{}{
@@ -229,11 +231,12 @@ func TestGenerateRandomBytes(t *testing.T) {
 func TestTemplateField(t *testing.T) {
 	m := goji.NewMux()
 	CSRF := Protect(testKey, FieldName(testFieldName))
-	m.UseC(CSRF)
+	m.Use(CSRF)
 
 	var token string
 	var customTemplateField string
-	m.HandleFuncC(pat.New("/"), func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	m.HandleFunc(pat.New("/"), func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
 		token = Token(ctx, r)
 		customTemplateField = string(TemplateField(ctx, r))
 	})
@@ -256,25 +259,25 @@ func TestTemplateField(t *testing.T) {
 
 func TestUnsafeSkipCSRFCheck(t *testing.T) {
 	m := goji.NewMux()
-	skipCheck := func(h goji.Handler) goji.Handler {
-		fn := func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-			ctx = UnsafeSkipCheck(ctx)
-			h.ServeHTTPC(ctx, w, r)
+	skipCheck := func(h http.Handler) http.Handler {
+		fn := func(w http.ResponseWriter, r *http.Request) {
+			ctx := UnsafeSkipCheck(r.Context())
+			h.ServeHTTP(w, r.WithContext(ctx))
 		}
 
-		return goji.HandlerFunc(fn)
+		return http.HandlerFunc(fn)
 	}
 
 	// Must be used prior to the CSRF handler being invoked.
-	m.UseC(skipCheck)
+	m.Use(skipCheck)
 
 	CSRF := Protect(testKey)
-	m.UseC(CSRF)
+	m.Use(CSRF)
 
 	var teapot = 418
 
 	// Issue a POST request without a CSRF token in the request.
-	m.HandleFuncC(pat.Post("/"), func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	m.HandleFunc(pat.Post("/"), func(w http.ResponseWriter, r *http.Request) {
 		// Set a non-200 header to make the test explicit.
 		w.WriteHeader(teapot)
 	})
@@ -285,7 +288,7 @@ func TestUnsafeSkipCSRFCheck(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	m.ServeHTTPC(context.Background(), rr, r)
+	m.ServeHTTP(rr, r.WithContext(context.Background()))
 
 	if status := rr.Code; status != teapot {
 		t.Fatalf("middleware failed to skip this request: got %v want %v",

@@ -1,15 +1,14 @@
 package csrf
 
 import (
+	"net/http"
 	"reflect"
 	"testing"
-
-	"goji.io"
 )
 
 // Tests that options functions are applied to the middleware.
 func TestOptions(t *testing.T) {
-	var h goji.Handler
+	var h http.Handler
 
 	age := 86400
 	domain := "goji.io"
@@ -27,7 +26,7 @@ func TestOptions(t *testing.T) {
 		Secure(false),
 		RequestHeader(header),
 		FieldName(field),
-		ErrorHandler(goji.HandlerFunc(errorHandler)),
+		ErrorHandler(http.HandlerFunc(errorHandler)),
 		CookieName(name),
 	}
 

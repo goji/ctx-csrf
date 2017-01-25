@@ -14,14 +14,14 @@ import (
 )
 
 var testKey = []byte("keep-it-secret-keep-it-safe-----")
-var testHandler = goji.HandlerFunc(func(ctx context.Context, w http.ResponseWriter, r *http.Request) {})
+var testHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
 // TestProtect is a high-level test to make sure the middleware returns the
 // wrapped handler with a 200 OK status.
 func TestProtect(t *testing.T) {
 	m := goji.NewMux()
-	m.UseC(Protect(testKey))
-	m.HandleFuncC(pat.Get("/"), testHandler)
+	m.Use(Protect(testKey))
+	m.HandleFunc(pat.Get("/"), testHandler)
 
 	r, err := http.NewRequest("GET", "/", nil)
 	if err != nil {
@@ -45,8 +45,8 @@ func TestProtect(t *testing.T) {
 // methods return a 403 Forbidden status when a CSRF cookie is not present.
 func TestMethods(t *testing.T) {
 	m := goji.NewMux()
-	m.UseC(Protect(testKey))
-	m.HandleFuncC(pat.New("/"), testHandler)
+	m.Use(Protect(testKey))
+	m.HandleFunc(pat.New("/"), testHandler)
 
 	// Test idempontent ("safe") methods
 	for _, method := range safeMethods {
@@ -94,11 +94,11 @@ func TestMethods(t *testing.T) {
 // TestBadCookie tests for failure when a cookie header is modified (malformed).
 func TestBadCookie(t *testing.T) {
 	m := goji.NewMux()
-	m.UseC(Protect(testKey))
+	m.Use(Protect(testKey))
 
 	var token string
-	m.HandleFuncC(pat.New("/"), func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-		token = Token(ctx, r)
+	m.HandleFunc(pat.New("/"), func(w http.ResponseWriter, r *http.Request) {
+		token = Token(r.Context(), r)
 	})
 
 	// Obtain a CSRF cookie via a GET request.
@@ -134,18 +134,18 @@ func TestBadCookie(t *testing.T) {
 
 func TestErrorHandler(t *testing.T) {
 	m := goji.NewMux()
-	errorHandler := goji.HandlerFunc(func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-		if ctx.Value(errorKey) == nil {
+	errorHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Context().Value(errorKey) == nil {
 			t.Errorf("should have access to a goji error")
 		}
 		http.Error(w, "", http.StatusTeapot)
 	})
-	m.UseC(Protect(testKey, ErrorHandler(errorHandler)))
+	m.Use(Protect(testKey, ErrorHandler(errorHandler)))
 
 	r, _ := http.NewRequest("POST", "/", nil)
 
 	rr := httptest.NewRecorder()
-	m.ServeHTTPC(context.Background(), rr, r)
+	m.ServeHTTP(rr, r.WithContext(context.Background()))
 
 	if rr.Code != http.StatusTeapot {
 		t.Fatalf("custom error handler was not called: got %v want %v",
@@ -156,8 +156,8 @@ func TestErrorHandler(t *testing.T) {
 // Responses should set a "Vary: Cookie" header to protect client/proxy caching.
 func TestVaryHeader(t *testing.T) {
 	m := goji.NewMux()
-	m.UseC(Protect(testKey))
-	m.HandleFuncC(pat.Get("/"), testHandler)
+	m.Use(Protect(testKey))
+	m.HandleFunc(pat.Get("/"), testHandler)
 
 	r, err := http.NewRequest("HEAD", "https://www.golang.org/", nil)
 	if err != nil {
@@ -180,8 +180,8 @@ func TestVaryHeader(t *testing.T) {
 // Requests with no Referer header should fail.
 func TestNoReferer(t *testing.T) {
 	m := goji.NewMux()
-	m.UseC(Protect(testKey))
-	m.HandleFuncC(pat.Get("/"), testHandler)
+	m.Use(Protect(testKey))
+	m.HandleFunc(pat.Get("/"), testHandler)
 
 	r, err := http.NewRequest("POST", "https://golang.org/", nil)
 	if err != nil {
@@ -201,11 +201,11 @@ func TestNoReferer(t *testing.T) {
 // match the request URL correctly fail CSRF validation.
 func TestBadReferer(t *testing.T) {
 	m := goji.NewMux()
-	m.UseC(Protect(testKey))
+	m.Use(Protect(testKey))
 
 	var token string
-	m.HandleFuncC(pat.New("/"), func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-		token = Token(ctx, r)
+	m.HandleFunc(pat.New("/"), func(w http.ResponseWriter, r *http.Request) {
+		token = Token(r.Context(), r)
 	})
 
 	// Obtain a CSRF cookie via a GET request.
@@ -241,11 +241,11 @@ func TestBadReferer(t *testing.T) {
 // Requests with a valid Referer should pass.
 func TestWithReferer(t *testing.T) {
 	m := goji.NewMux()
-	m.UseC(Protect(testKey))
+	m.Use(Protect(testKey))
 
 	var token string
-	m.HandleFuncC(pat.New("/"), func(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-		token = Token(ctx, r)
+	m.HandleFunc(pat.New("/"), func(w http.ResponseWriter, r *http.Request) {
+		token = Token(r.Context(), r)
 	})
 
 	// Obtain a CSRF cookie via a GET request.

@@ -35,8 +35,8 @@ func (bs *brokenSaveStore) Save(realToken []byte, w http.ResponseWriter) error {
 func TestStoreCannotSave(t *testing.T) {
 	m := goji.NewMux()
 	bs := &brokenSaveStore{}
-	m.UseC(Protect(testKey, setStore(bs)))
-	m.HandleFuncC(pat.Get("/"), testHandler)
+	m.Use(Protect(testKey, setStore(bs)))
+	m.HandleFunc(pat.Get("/"), testHandler)
 
 	r, err := http.NewRequest("GET", "/", nil)
 	if err != nil {
