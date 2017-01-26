@@ -14,8 +14,9 @@ import (
 	"testing"
 	"text/template"
 
+	"context"
+
 	"goji.io/pat"
-	"golang.org/x/net/context"
 
 	"goji.io"
 )

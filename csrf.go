@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"golang.org/x/net/context"
+	"context"
 
 	"github.com/gorilla/securecookie"
 )

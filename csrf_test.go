@@ -8,7 +8,7 @@ import (
 
 	"goji.io/pat"
 
-	"golang.org/x/net/context"
+	"context"
 
 	"goji.io"
 )
