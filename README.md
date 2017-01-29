@@ -1,6 +1,8 @@
 # goji/ctx-csrf
 [![GoDoc](https://godoc.org/github.com/goji/ctx-csrf?status.svg)](https://godoc.org/github.com/goji/ctx-csrf) [![Build Status](https://travis-ci.org/goji/ctx-csrf.svg?branch=master)](https://travis-ci.org/goji/ctx-csrf)
 
+> Using the latest version of [Goji](https://github.com/goji/goji)? The one with support for Go's own `request.Context()` built-in? [gorilla/csrf](https://github.com/gorilla/csrf) supports this out of the box, and is the preferred library going forward.
+
 **ctx-csrf** is a HTTP middleware library that provides [cross-site request
 forgery](http://blog.codinghorror.com/preventing-csrf-and-xsrf-attacks/) (CSRF)
 protection with support for Go's `net/context` package. It includes:
