@@ -8,9 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"golang.org/x/net/context"
-
-	"goji.io"
+	"context"
 
 	"github.com/gorilla/securecookie"
 )
@@ -56,7 +54,7 @@ var (
 )
 
 type csrf struct {
-	h    goji.Handler
+	h    http.Handler
 	sc   *securecookie.SecureCookie
 	st   store
 	opts options
@@ -73,7 +71,7 @@ type options struct {
 	Secure        bool
 	RequestHeader string
 	FieldName     string
-	ErrorHandler  goji.Handler
+	ErrorHandler  http.Handler
 	CookieName    string
 }
 
@@ -115,7 +113,7 @@ type options struct {
 //	    // signup_form.tmpl just needs a {{ .csrfField }} template tag for
 //	    // csrf.TemplateField to inject the CSRF token into. Easy!
 //	    t.ExecuteTemplate(w, "signup_form.tmpl", map[string]interface{
-//	        csrf.TemplateTag: csrf.TemplateField(ctx, r),
+//		csrf.TemplateTag: csrf.TemplateField(ctx, r),
 //	    })
 //	    // We could also retrieve the token directly from csrf.Token(c, r) and
 //	    // set it in the request header - w.Header.Set("X-CSRF-Token", token)
@@ -128,13 +126,13 @@ type options struct {
 //	    // our CSRF protection requirements.
 //	}
 //
-func Protect(authKey []byte, opts ...Option) func(goji.Handler) goji.Handler {
-	return func(h goji.Handler) goji.Handler {
+func Protect(authKey []byte, opts ...Option) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
 		cs := parseOptions(h, opts...)
 
 		// Set the defaults if no options have been specified
 		if cs.opts.ErrorHandler == nil {
-			cs.opts.ErrorHandler = goji.HandlerFunc(unauthorizedHandler)
+			cs.opts.ErrorHandler = http.HandlerFunc(unauthorizedHandler)
 		}
 
 		if cs.opts.MaxAge < 1 {
@@ -181,11 +179,12 @@ func Protect(authKey []byte, opts ...Option) func(goji.Handler) goji.Handler {
 }
 
 // Implements goji.Handler for the csrf type.
-func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func (cs csrf) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	// Skip the check if directed to. This should always be a bool.
 	if skip, ok := ctx.Value(skipCheckKey).(bool); ok {
 		if skip {
-			cs.h.ServeHTTPC(ctx, w, r)
+			cs.h.ServeHTTP(w, r)
 			return
 		}
 	}
@@ -202,7 +201,8 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 		realToken, err = generateRandomBytes(tokenLength)
 		if err != nil {
 			ctx = setEnvError(ctx, err)
-			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
+			r = r.WithContext(ctx)
+			cs.opts.ErrorHandler.ServeHTTP(w, r)
 			return
 		}
 
@@ -210,7 +210,8 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 		err = cs.st.Save(realToken, w)
 		if err != nil {
 			ctx = setEnvError(ctx, err)
-			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
+			r = r.WithContext(ctx)
+			cs.opts.ErrorHandler.ServeHTTP(w, r)
 			return
 		}
 	}
@@ -232,13 +233,15 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 			referer, err := url.Parse(r.Referer())
 			if err != nil || referer.String() == "" {
 				ctx = setEnvError(ctx, ErrNoReferer)
-				cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
+				r = r.WithContext(ctx)
+				cs.opts.ErrorHandler.ServeHTTP(w, r)
 				return
 			}
 
 			if sameOrigin(r.URL, referer) == false {
 				ctx = setEnvError(ctx, ErrBadReferer)
-				cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
+				r = r.WithContext(ctx)
+				cs.opts.ErrorHandler.ServeHTTP(w, r)
 				return
 			}
 		}
@@ -247,7 +250,8 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 		// ("unsafe") methods, call the error handler.
 		if realToken == nil {
 			ctx = setEnvError(ctx, ErrNoToken)
-			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
+			r = r.WithContext(ctx)
+			cs.opts.ErrorHandler.ServeHTTP(w, r)
 			return
 		}
 
@@ -257,7 +261,8 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 		// Compare the request token against the real token
 		if !compareTokens(requestToken, realToken) {
 			ctx = setEnvError(ctx, ErrBadToken)
-			cs.opts.ErrorHandler.ServeHTTPC(ctx, w, r)
+			r = r.WithContext(ctx)
+			cs.opts.ErrorHandler.ServeHTTP(w, r)
 			return
 		}
 
@@ -267,12 +272,14 @@ func (cs csrf) ServeHTTPC(ctx context.Context, w http.ResponseWriter, r *http.Re
 	w.Header().Add("Vary", "Cookie")
 
 	// Call the wrapped handler/router on success
-	cs.h.ServeHTTPC(ctx, w, r)
+	r = r.WithContext(ctx)
+	cs.h.ServeHTTP(w, r)
 }
 
 // unauthorizedhandler sets a HTTP 403 Forbidden status and writes the
 // CSRF failure reason to the response.
-func unauthorizedHandler(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+func unauthorizedHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	http.Error(w, fmt.Sprintf("%s - %s",
 		http.StatusText(http.StatusForbidden), FailureReason(ctx, r)),
 		http.StatusForbidden)
